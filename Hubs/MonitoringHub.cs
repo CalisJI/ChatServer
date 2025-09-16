@@ -68,13 +68,15 @@ namespace ChatServer.Hubs
                     ConnectedTime = DateTime.Now,
                     LastActivity = DateTime.Now
                 };
+                await Clients.All.SendAsync("ClientConnected", clientId);
                 // Gửi tất cả metrics hiện có cho client mới
                 foreach (var kvp in _clientMetrics)
                 {
                     await Clients.Caller.SendAsync("ReceiveMetrics", kvp.Key, kvp.Value);
+                    
                 }
 
-                await Clients.All.SendAsync("ClientConnected", clientId);
+                
             }
 
             await base.OnConnectedAsync();
