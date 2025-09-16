@@ -44,5 +44,7 @@ app.MapControllers();
 
 // Map SignalR Hub
 app.MapHub<ChatHub>("/chatHub");
+// Thêm hub mapping
+app.MapHub<MonitoringHub>("/monitoringHub");
 
 app.Run("http://*:9000");
