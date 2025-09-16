@@ -8,6 +8,8 @@ namespace ChatServer.Hubs
     {
         private static readonly ConcurrentDictionary<string, ClientInfo> _connectedClients = new();
         private static readonly List<LogEntry> _logEntries = new();
+
+        private static readonly ConcurrentDictionary<string, SystemMetrics> _clientMetrics = new();
         // Client gửi log real-time
         public async Task SendLog(string clientId, string logLevel, string message, string timestamp)
         {
@@ -26,12 +28,32 @@ namespace ChatServer.Hubs
             await Clients.All.SendAsync("ReceiveLog", logEntry);
         }
 
-        // Client gửi system metrics
+        // Client gửi metrics
         public async Task SendMetrics(string clientId, SystemMetrics metrics)
         {
-            // Lưu metrics vào database hoặc memory
+            // Lưu metrics
+            _clientMetrics[clientId] = metrics;
+
+            // Broadcast đến tất cả monitoring clients
             await Clients.All.SendAsync("ReceiveMetrics", clientId, metrics);
         }
+
+        // Lấy tất cả metrics từ server
+        public Dictionary<string, SystemMetrics> GetAllMetrics()
+        {
+            return _clientMetrics.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+
+        // Request gửi lại tất cả metrics
+        public async Task RequestAllMetrics()
+        {
+            foreach (var kvp in _clientMetrics)
+            {
+                await Clients.Caller.SendAsync("ReceiveMetrics", kvp.Key, kvp.Value);
+            }
+        }
+
+        
 
         // Client register khi kết nối
         public override async Task OnConnectedAsync()
@@ -46,16 +68,25 @@ namespace ChatServer.Hubs
                     ConnectedTime = DateTime.Now,
                     LastActivity = DateTime.Now
                 };
+                // Gửi tất cả metrics hiện có cho client mới
+                foreach (var kvp in _clientMetrics)
+                {
+                    await Clients.Caller.SendAsync("ReceiveMetrics", kvp.Key, kvp.Value);
+                }
+
+                await Clients.All.SendAsync("ClientConnected", clientId);
             }
 
-            await Clients.All.SendAsync("ClientConnected", clientId);
             await base.OnConnectedAsync();
         }
 
+
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
+            //var clientId = Context.GetHttpContext().Request.Query["clientId"];
             if (_connectedClients.TryRemove(Context.ConnectionId, out var clientInfo))
             {
+                _clientMetrics.TryRemove(clientInfo.ClientId, out _);
                 await Clients.All.SendAsync("ClientDisconnected", clientInfo.ClientId);
             }
             await base.OnDisconnectedAsync(exception);
@@ -80,6 +111,8 @@ namespace ChatServer.Hubs
 
             return query.OrderByDescending(x => x.ServerTime).Take(1000).ToList();
         }
+        // Request gửi lại tất cả metrics
+       
     }
 
 
@@ -112,7 +145,9 @@ namespace ChatServer.Hubs
 
     public class NetworkStats
     {
-        public double BytesSent { get; set; }
-        public double BytesReceived { get; set; }
+        public double UploadSpeed { get; set; }
+        public double DownloadSpeed { get; set; }
+        public double TotalSpeed { get; set; }
+
     }
 }
