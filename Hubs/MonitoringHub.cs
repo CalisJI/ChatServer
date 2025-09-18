@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using ChatServer.TCP;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Concurrent;
 
@@ -10,6 +11,37 @@ namespace ChatServer.Hubs
         private static readonly List<LogEntry> _logEntries = new();
 
         private static readonly ConcurrentDictionary<string, SystemMetrics> _clientMetrics = new();
+
+        private readonly TCPServer _tcpServer;
+        // ✅ Inject TCPServer qua constructor
+        public MonitoringHub(TCPServer tcpServer)
+        {
+            _tcpServer = tcpServer;
+        }
+
+        // ✅ Method để gửi message đến TCP clients
+        public async Task SendMessageToTCPClients(string message)
+        {
+            await _tcpServer.BroadcastToTCPClients(message);
+            await Clients.Caller.SendAsync("ReceiveTCPStatus", $"Message sent to {_tcpServer.GetConnectedClientsCount()} TCP clients");
+        }
+
+        // ✅ Lấy trạng thái TCP Server
+        public async Task<string> GetTCPStatus()
+        {
+            var status = _tcpServer.IsRunning ? "Running" : "Stopped";
+            var clients = _tcpServer.GetConnectedClientsCount();
+            return $"TCP Server: {status} | Connected clients: {clients}";
+        }
+
+        // ✅ Gửi command đến TCP client cụ thể
+        public async Task SendCommandToTCPClient(string clientId, string command)
+        {
+            await _tcpServer.SendToTCPClient(clientId, command);
+            await Clients.Caller.SendAsync("ReceiveTCPStatus", $"Command sent to TCP client: {clientId}");
+        }
+
+
         // Client gửi log real-time
         public async Task SendLog(string clientId, string logLevel, string message, string timestamp)
         {
@@ -76,7 +108,6 @@ namespace ChatServer.Hubs
                     
                 }
 
-                
             }
 
             await base.OnConnectedAsync();
